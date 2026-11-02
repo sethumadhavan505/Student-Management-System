@@ -1,1 +1,7 @@
-__pycache__/\n*.py[cod]\n.venv/\nvenv/\n.env\nstudents.db\n.pytest_cache/\n
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+students.db
+.pytest_cache/

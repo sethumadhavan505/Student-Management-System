@@ -1,37 +1,8 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Student Management System</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-<header class="topbar"><div class="brand"><span class="brand-mark">S</span><div><strong>StudentHub</strong><small>Student Management System</small></div></div><span class="status-pill">● Local workspace</span></header>
-<main class="container">
-  <section class="hero"><div><p class="eyebrow">ACADEMIC RECORDS</p><h1>Manage students.<br><span>Keep everything organised.</span></h1><p class="hero-copy">Add, find, update and manage student records from one simple dashboard.</p></div><div class="hero-icon" aria-hidden="true">▤</div></section>
-  <section class="stats">
-    <article class="stat-card"><span>Total students</span><strong id="studentCount">0</strong><small>Records in this workspace</small></article>
-    <article class="stat-card"><span>Departments</span><strong id="departmentCount">0</strong><small>Unique departments</small></article>
-    <article class="stat-card"><span>Quick search</span><strong>⌕</strong><small>Search by name, roll no. or email</small></article>
-  </section>
-  <section class="workspace">
-    <section class="panel form-panel"><div class="panel-heading"><div><p class="eyebrow">STUDENT DETAILS</p><h2 id="formTitle">Add a student</h2></div><span class="heading-icon">＋</span></div>
-      <form id="studentForm"><input type="hidden" id="studentId">
-        <label for="name">Full name</label><input id="name" name="name" maxlength="100" placeholder="e.g. Sethu Madhavan" required>
-        <label for="roll_number">Roll number</label><input id="roll_number" name="roll_number" maxlength="30" placeholder="e.g. IT2026D001" required>
-        <label for="department">Department</label><input id="department" name="department" maxlength="100" placeholder="e.g. Information Technology" required>
-        <label for="email">Email address</label><input id="email" name="email" type="email" placeholder="student@example.com" required>
-        <div class="form-actions"><button class="btn primary" id="saveButton" type="submit">Add student</button><button class="btn secondary hidden" id="cancelButton" type="button">Cancel edit</button></div>
-        <p class="message" id="formMessage" role="status"></p>
-      </form>
-    </section>
-    <section class="panel list-panel"><div class="list-heading"><div><p class="eyebrow">DIRECTORY</p><h2>Student records</h2></div><button class="btn secondary" id="refreshButton" type="button">↻ Refresh</button></div>
-      <div class="search-wrap"><span>⌕</span><input id="searchInput" placeholder="Search students..." aria-label="Search students"></div>
-      <div class="table-wrap"><table><thead><tr><th>Student</th><th>Roll number</th><th>Department</th><th>Email</th><th>Actions</th></tr></thead><tbody id="studentTable"><tr><td colspan="5" class="empty">Loading student records…</td></tr></tbody></table></div>
-      <p class="table-note">Student information is stored locally in the SQLite database for this project.</p>
-    </section>
-  </section>
-  <footer>Built with Flask, SQLite, HTML, CSS and JavaScript · Review and test before production use.</footer>
-</main>
-<script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
-</body></html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Student Management System</title><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"></head>
+<body><header class="topbar"><div class="brand"><span class="brand-mark">S</span><div><strong>StudentHub</strong><small>Student Management System</small></div></div><span class="status-pill">● Local workspace</span></header>
+<main class="container"><section class="hero"><div><p class="eyebrow">ACADEMIC RECORDS</p><h1>Manage students.<br><span>Keep everything organised.</span></h1><p class="hero-copy">Add, find, update and manage student records from one simple dashboard.</p></div><div class="hero-icon">▤</div></section>
+<section class="stats"><article class="stat-card"><span>Total students</span><strong id="studentCount">0</strong><small>Records in this workspace</small></article><article class="stat-card"><span>Departments</span><strong id="departmentCount">0</strong><small>Unique departments</small></article><article class="stat-card"><span>Quick search</span><strong>⌕</strong><small>Search by name, roll no. or email</small></article></section>
+<section class="workspace"><section class="panel"><div class="panel-heading"><div><p class="eyebrow">STUDENT DETAILS</p><h2 id="formTitle">Add a student</h2></div><span class="heading-icon">＋</span></div><form id="studentForm"><input type="hidden" id="studentId"><label for="name">Full name</label><input id="name" maxlength="100" placeholder="e.g. Sethu Madhavan" required><label for="roll_number">Roll number</label><input id="roll_number" maxlength="30" placeholder="e.g. IT2026D001" required><label for="department">Department</label><input id="department" maxlength="100" placeholder="e.g. Information Technology" required><label for="email">Email address</label><input id="email" type="email" placeholder="student@example.com" required><div class="form-actions"><button class="btn primary" id="saveButton" type="submit">Add student</button><button class="btn secondary hidden" id="cancelButton" type="button">Cancel edit</button></div><p class="message" id="formMessage" role="status"></p></form></section>
+<section class="panel"><div class="list-heading"><div><p class="eyebrow">DIRECTORY</p><h2>Student records</h2></div><button class="btn secondary" id="refreshButton" type="button">↻ Refresh</button></div><div class="search-wrap"><span>⌕</span><input id="searchInput" placeholder="Search students..." aria-label="Search students"></div><div class="table-wrap"><table><thead><tr><th>Student</th><th>Roll number</th><th>Department</th><th>Email</th><th>Actions</th></tr></thead><tbody id="studentTable"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody></table></div><p class="table-note">Records are stored locally in this project's SQLite database.</p></section></section><footer>Built with Flask, SQLite, HTML, CSS and JavaScript · Review and test before production use.</footer></main>
+<script src="{{ url_for('static', filename='js/app.js') }}" defer></script></body></html>
