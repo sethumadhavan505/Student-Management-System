@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="A simple dashboard for managing student records."
+    >
+    <title>Student Management System</title>
+    <link rel="stylesheet" href="./static/css/style.css">
+    <script src="./static/js/app.js" defer></script>
+  </head>
+  <body data-storage="local">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="StudentHub home">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span class="brand-copy">
+          <strong>StudentHub</strong>
+          <small>Student Management System</small>
+        </span>
+      </a>
+      <span class="status-pill">GitHub Pages · Browser storage</span>
+    </header>
+
+    <main class="container">
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy-wrap">
+          <p class="eyebrow">ACADEMIC RECORDS</p>
+          <h1 id="page-title">
+            Manage students.
+            <span>Keep everything organised.</span>
+          </h1>
+          <p class="hero-copy">
+            Add, find, update and manage student records from one simple
+            dashboard.
+          </p>
+        </div>
+        <div class="hero-icon" aria-hidden="true">▤</div>
+      </section>
+
+      <section class="stats" aria-label="Student summary">
+        <article class="stat-card">
+          <span>Total students</span>
+          <strong id="studentCount">0</strong>
+          <small>Records in this browser</small>
+        </article>
+        <article class="stat-card">
+          <span>Departments</span>
+          <strong id="departmentCount">0</strong>
+          <small>Unique departments</small>
+        </article>
+        <article class="stat-card">
+          <span>Quick search</span>
+          <strong aria-hidden="true">⌕</strong>
+          <small>Search by name, roll no. or email</small>
+        </article>
+      </section>
+
+      <section class="workspace" aria-label="Student management">
+        <section class="panel form-panel" aria-labelledby="formTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">STUDENT DETAILS</p>
+              <h2 id="formTitle">Add a student</h2>
+            </div>
+            <span class="heading-icon" aria-hidden="true">＋</span>
+          </div>
+
+          <form id="studentForm">
+            <input type="hidden" id="studentId">
+
+            <label for="name">Full name</label>
+            <input
+              id="name"
+              name="name"
+              maxlength="100"
+              autocomplete="name"
+              placeholder="e.g. Sethu Madhavan"
+              required
+            >
+
+            <label for="roll_number">Roll number</label>
+            <input
+              id="roll_number"
+              name="roll_number"
+              maxlength="30"
+              placeholder="e.g. IT2026D001"
+              required
+            >
+
+            <label for="department">Department</label>
+            <input
+              id="department"
+              name="department"
+              maxlength="100"
+              placeholder="e.g. Information Technology"
+              required
+            >
+
+            <label for="email">Email address</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autocomplete="email"
+              placeholder="student@example.com"
+              required
+            >
+
+            <div class="form-actions">
+              <button class="btn primary" id="saveButton" type="submit">
+                Add student
+              </button>
+              <button
+                class="btn secondary hidden"
+                id="cancelButton"
+                type="button"
+              >
+                Cancel edit
+              </button>
+            </div>
+            <p class="message" id="formMessage" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section class="panel directory-panel" aria-labelledby="directory-title">
+          <div class="list-heading">
+            <div>
+              <p class="eyebrow">DIRECTORY</p>
+              <h2 id="directory-title">Student records</h2>
+            </div>
+            <button class="btn secondary" id="refreshButton" type="button">
+              <span aria-hidden="true">↻</span>
+              Refresh
+            </button>
+          </div>
+
+          <label class="sr-only" for="searchInput">Search students</label>
+          <div class="search-wrap">
+            <span aria-hidden="true">⌕</span>
+            <input
+              id="searchInput"
+              type="search"
+              placeholder="Search students..."
+              autocomplete="off"
+            >
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Student</th>
+                  <th scope="col">Roll number</th>
+                  <th scope="col">Department</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="studentTable">
+                <tr>
+                  <td colspan="5" class="empty">Loading student records...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="table-note">
+            Pages stores records in this browser only. They are not shared with
+            other visitors or connected to the Flask database.
+          </p>
+        </section>
+      </section>
+
+      <footer>
+        GitHub Pages demo. Do not enter real or sensitive student information.
+      </footer>
+    </main>
+  </body>
+</html>
