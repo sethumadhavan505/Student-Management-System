@@ -27,13 +27,19 @@ def create_app(test_config=None):
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
         db().commit()
     def validate(data, current_id=None):
+        if not isinstance(data, dict):
+            return None, "Request body must be a JSON object."
         keys=("name","roll_number","department","email")
         item={k:str(data.get(k,"")).strip() for k in keys}
         missing=[k for k,v in item.items() if not v]
         if missing: return None, f"Please provide: {', '.join(missing)}."
         if len(item["name"])>100 or len(item["department"])>100: return None,"Name and department must be 100 characters or fewer."
         if len(item["roll_number"])>30: return None,"Roll number must be 30 characters or fewer."
-        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+",item["email"]): return None,"Enter a valid email address."
+        raw_email=data.get("email","")
+        email_pattern=r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}"
+        if (not isinstance(raw_email,str) or raw_email!=raw_email.strip()
+            or not re.fullmatch(email_pattern,item["email"])):
+            return None,"Enter a valid email address."
         duplicate=db().execute("SELECT id FROM students WHERE (roll_number=? OR email=?) AND id!=?",
           (item["roll_number"],item["email"],current_id or -1)).fetchone()
         if duplicate: return None,"A student with this roll number or email already exists."
@@ -43,20 +49,26 @@ def create_app(test_config=None):
     @app.get("/api/students")
     def list_students():
         q=request.args.get("q","").strip()
-        rows=db().execute("""SELECT id,name,roll_number,department,email,created_at FROM students
-          WHERE name LIKE ? OR roll_number LIKE ? OR department LIKE ? OR email LIKE ? ORDER BY id DESC""",
-          tuple([f"%{q}%"]*4)).fetchall()
+        try:
+            rows=db().execute("""SELECT id,name,roll_number,department,email,created_at FROM students
+              WHERE name LIKE ? OR roll_number LIKE ? OR department LIKE ? OR email LIKE ? ORDER BY id DESC""",
+              tuple([f"%{q}%"]*4)).fetchall()
+        except sqlite3.DatabaseError:
+            return jsonify({"error":"Database operation failed."}),500
         return jsonify([dict(r) for r in rows])
     @app.post("/api/students")
     def create_student():
-        item,error=validate(request.get_json(silent=True) or {})
-        if error: return jsonify({"error":error}),400
         try:
+            item,error=validate(request.get_json(silent=True) or {})
+            if error: return jsonify({"error":error}),400
             cur=db().execute("INSERT INTO students(name,roll_number,department,email) VALUES(?,?,?,?)",
               (item["name"],item["roll_number"],item["department"],item["email"]))
             db().commit()
+            row=db().execute("SELECT * FROM students WHERE id=?",(cur.lastrowid,)).fetchone()
         except sqlite3.IntegrityError: return jsonify({"error":"Roll number and email must be unique."}),409
-        return jsonify(dict(db().execute("SELECT * FROM students WHERE id=?",(cur.lastrowid,)).fetchone())),201
+        except sqlite3.DatabaseError:
+            return jsonify({"error":"Database operation failed."}),500
+        return jsonify(dict(row)),201
     @app.put("/api/students/<int:student_id>")
     def update_student(student_id):
         if not db().execute("SELECT id FROM students WHERE id=?",(student_id,)).fetchone():
