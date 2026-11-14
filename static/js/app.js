@@ -3,7 +3,16 @@ const tableBody = document.getElementById("studentTable");
 const message = document.getElementById("formMessage");
 const searchInput = document.getElementById("searchInput");
 const idInput = document.getElementById("studentId");
+const exportButton = document.getElementById("exportButton");
 const fields = ["name", "roll_number", "department", "email"];
+const csvColumns = [
+  ["id", "ID"],
+  ["name", "Name"],
+  ["roll_number", "Roll Number"],
+  ["department", "Department"],
+  ["email", "Email"],
+  ["created_at", "Created At"],
+];
 const localStorageKey = "student-management-system.students.v1";
 const usesBrowserStorage = document.body.dataset.storage === "local";
 let students = [];
@@ -149,6 +158,37 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function escapeCsvValue(value) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportStudentsToCsv() {
+  const header = csvColumns.map(([, label]) => escapeCsvValue(label)).join(",");
+  const rows = students.map((student) =>
+    csvColumns
+      .map(([field]) => escapeCsvValue(student[field]))
+      .join(","),
+  );
+  const csv = `\uFEFF${[header, ...rows].join("\r\n")}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "students.csv";
+  link.hidden = true;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+
+  if (students.length === 0) {
+    showMessage("No matching student records; exported an empty CSV.");
+  } else {
+    showMessage(`Exported ${students.length} student record${students.length === 1 ? "" : "s"} to CSV.`, "success");
+  }
+}
+
 function renderStudents(records) {
   if (!records.length) {
     tableBody.innerHTML =
@@ -251,6 +291,7 @@ tableBody.addEventListener("click", async (event) => {
 
 document.getElementById("cancelButton").addEventListener("click", resetForm);
 document.getElementById("refreshButton").addEventListener("click", loadStudents);
+exportButton.addEventListener("click", exportStudentsToCsv);
 searchInput.addEventListener("input", loadStudents);
 
 loadStudents();

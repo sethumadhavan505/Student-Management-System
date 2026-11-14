@@ -1,33 +1,59 @@
 import pytest
+from pathlib import Path
 from app import create_app
+
 
 @pytest.fixture()
 def client(tmp_path):
     app=create_app({"TESTING":True,"DATABASE":str(tmp_path/"test.sqlite")})
     with app.test_client() as client: yield client
 
+
 def student(**overrides):
     data={"name":"Asha Kumar","roll_number":"IT001","department":"Information Technology","email":"asha@example.com"}
     data.update(overrides); return data
+
 
 def test_home_page(client):
     response=client.get("/")
     assert response.status_code==200
     assert b"Student Management System" in response.data
 
+
+def test_export_button_is_available_in_both_frontends(client):
+    flask_page = client.get("/")
+    demo_page = (Path(__file__).resolve().parents[1] / "index.html").read_text(encoding="utf-8")
+
+    assert b'id="exportButton"' in flask_page.data
+    assert "Export CSV" in demo_page
+
+
+def test_export_uses_student_fields_and_csv_escaping(client):
+    script = client.get("/static/js/app.js").get_data(as_text=True)
+
+    assert '["created_at", "Created At"]' in script
+    assert 'function escapeCsvValue(value)' in script
+    assert "text.replace(/\"/g, '\"\"')" in script
+    assert "students.map((student)" in script
+    assert "exportButton.addEventListener(\"click\", exportStudentsToCsv)" in script
+
+
 def test_create_and_list(client):
     response=client.post("/api/students",json=student())
     assert response.status_code==201
     assert len(client.get("/api/students").json)==1
 
+
 def test_invalid_email(client):
     response=client.post("/api/students",json=student(email="bad"))
     assert response.status_code==400
+
 
 def test_duplicate_rejected(client):
     client.post("/api/students",json=student())
     response=client.post("/api/students",json=student(email="other@example.com"))
     assert response.status_code==400
+
 
 def test_update_delete(client):
     sid=client.post("/api/students",json=student()).json["id"]
@@ -153,7 +179,6 @@ def test_create_ignores_unknown_fields_consistently(client):
     data = response.get_json()
     assert "unexpected_field" not in data
 
-
 # ----------------------------------------------------------------------
 # Additional tests for list/search flow
 # ----------------------------------------------------------------------
@@ -216,7 +241,6 @@ def test_list_search_with_special_characters_returns_empty_list(client):
     response = client.get("/api/students?q=\" OR 1=1 --")
     assert response.status_code == 200
     assert response.get_json() == []
-
 
 # ----------------------------------------------------------------------
 # Additional tests for update flow
@@ -321,7 +345,6 @@ def test_update_preserves_id_and_created_at(client):
     assert updated["id"] == created["id"]
     assert updated["created_at"] == before_created
 
-
 # ----------------------------------------------------------------------
 # Additional tests for delete flow
 # ----------------------------------------------------------------------
@@ -335,7 +358,7 @@ def test_delete_existing_student_successfully(client):
 
 
 def test_delete_nonexistent_student_returns_404(client):
-    # Delete on a missing id should return 404.
+    # Delete on a missing id should return a 404.
     response = client.delete("/api/students/999999")
     assert response.status_code == 404
     assert "Student not found" in response.get_json()["error"]
@@ -358,7 +381,6 @@ def test_delete_removes_row_from_db(client):
 
     rows = client.get("/api/students").get_json()
     assert rows == []
-
 
 # ----------------------------------------------------------------------
 # Additional tests for invalid input and boundary values
@@ -400,7 +422,6 @@ def test_create_rejects_special_characters_in_name_if_unexpected(client):
     assert response.status_code == 201
     assert response.get_json()["name"] == "<script>alert(1)</script>"
 
-
 # ----------------------------------------------------------------------
 # Additional tests for database error cases
 # ----------------------------------------------------------------------
@@ -419,7 +440,7 @@ def test_database_error_on_create_returns_safe_error(client, monkeypatch):
 
 
 def test_database_error_on_list_returns_safe_error(client, monkeypatch):
-    # Simulate a database failure while listing records.
+    # Simulate a database failure while listing students.
     import sqlite3
 
     def raise_db_error(*args, **kwargs):
