@@ -293,11 +293,18 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 14px;
   padding: 0 11px;
   border: 1px solid var(--line);
   border-radius: 10px;
   color: var(--muted);
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) minmax(140px, 1fr) 130px auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .search-wrap input {
@@ -402,6 +409,14 @@ footer {
 @media (max-width: 900px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .filters {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .filters .btn {
+    width: 100%;
   }
 }
 

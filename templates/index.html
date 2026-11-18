@@ -104,6 +104,17 @@
               required
             >
 
+            <label for="academic_year">Academic year</label>
+            <input
+              id="academic_year"
+              name="academic_year"
+              type="number"
+              min="2000"
+              max="2100"
+              placeholder="e.g. 2026"
+              required
+            >
+
             <label for="email">Email address</label>
             <input
               id="email"
@@ -147,15 +158,37 @@
             </div>
           </div>
 
-          <label class="sr-only" for="searchInput">Search students</label>
-          <div class="search-wrap">
-            <span aria-hidden="true">⌕</span>
+          <div class="filters" aria-label="Student filters">
+            <label class="sr-only" for="searchInput">Search student records</label>
+            <div class="search-wrap">
+              <span aria-hidden="true">⌕</span>
+              <input
+                id="searchInput"
+                type="search"
+                placeholder="Search name, roll no., department, or email..."
+                autocomplete="off"
+              >
+            </div>
+            <label class="sr-only" for="departmentFilter">Filter by department</label>
             <input
-              id="searchInput"
+              id="departmentFilter"
               type="search"
-              placeholder="Search students..."
+              list="departmentOptions"
+              placeholder="All departments"
               autocomplete="off"
             >
+            <datalist id="departmentOptions"></datalist>
+            <label class="sr-only" for="academicYearFilter">Filter by academic year</label>
+            <input
+              id="academicYearFilter"
+              type="number"
+              min="2000"
+              max="2100"
+              placeholder="All years"
+            >
+            <button class="btn secondary" id="clearFiltersButton" type="button">
+              Clear filters
+            </button>
           </div>
 
           <div class="table-wrap">
@@ -165,13 +198,14 @@
                   <th scope="col">Student</th>
                   <th scope="col">Roll number</th>
                   <th scope="col">Department</th>
+                  <th scope="col">Academic year</th>
                   <th scope="col">Email</th>
                   <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody id="studentTable">
                 <tr>
-                  <td colspan="5" class="empty">Loading student records...</td>
+                  <td colspan="6" class="empty">Loading student records...</td>
                 </tr>
               </tbody>
             </table>
