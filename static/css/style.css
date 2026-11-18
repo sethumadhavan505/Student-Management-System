@@ -194,6 +194,13 @@ input {
   font-size: 19px;
 }
 
+.list-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .heading-icon {
   width: 35px;
   height: 35px;
@@ -456,5 +463,9 @@ footer {
 
   .list-heading {
     align-items: flex-start;
+  }
+
+  .list-actions {
+    justify-content: flex-end;
   }
 }
