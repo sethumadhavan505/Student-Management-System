@@ -7,6 +7,7 @@
       name="description"
       content="A simple dashboard for managing student records."
     >
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Student Management System</title>
     <link
       rel="stylesheet"
@@ -26,7 +27,13 @@
           <small>Student Management System</small>
         </span>
       </a>
-      <span class="status-pill">Flask · SQLite</span>
+      <div class="topbar-actions">
+        <span class="status-pill">Flask · SQLite</span>
+        <form method="post" action="{{ url_for('logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn secondary" type="submit">Sign out</button>
+        </form>
+      </div>
     </header>
 
     <main class="container">
@@ -210,6 +217,7 @@
               </tbody>
             </table>
           </div>
+          <p id="resultsStatus" class="sr-only" role="status" aria-live="polite"></p>
           <p class="table-note">
             Records are stored in this project's SQLite database.
           </p>

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Sign in to the Student Management System.">
+    <title>Sign in · Student Management System</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    >
+  </head>
+  <body>
+    <main class="login-panel">
+      <a class="brand" href="{{ url_for('login') }}" aria-label="StudentHub sign in">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span class="brand-copy">
+          <strong>StudentHub</strong>
+          <small>Student Management System</small>
+        </span>
+      </a>
+      <section class="panel" aria-labelledby="login-title">
+        <p class="eyebrow">ADMIN ACCESS</p>
+        <h1 id="login-title">Sign in</h1>
+        {% if error %}
+          <p class="message error" role="alert">{{ error }}</p>
+        {% endif %}
+        {% if not error or csrf_token %}
+          <form method="post" action="{{ url_for('login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="username">Username</label>
+            <input
+              id="username"
+              name="username"
+              autocomplete="username"
+              required
+            >
+            <label for="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            >
+            <button class="btn primary" type="submit">Sign in</button>
+          </form>
+        {% endif %}
+      </section>
+    </main>
+  </body>
+</html>
