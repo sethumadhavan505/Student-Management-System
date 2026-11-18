@@ -7,7 +7,7 @@ def client(tmp_path):
     with app.test_client() as client: yield client
 
 def student(**overrides):
-    data={"name":"Asha Kumar","roll_number":"IT001","department":"Information Technology","email":"asha@example.com"}
+    data={"name":"Asha Kumar","roll_number":"IT001","department":"Information Technology","academic_year":"2026","email":"asha@example.com"}
     data.update(overrides); return data
 
 def test_home_page(client):
@@ -429,3 +429,116 @@ def test_database_error_on_list_returns_safe_error(client, monkeypatch):
     response = client.get("/api/students")
     assert response.status_code == 500
     assert response.get_json() == {"error": "Database operation failed."}
+
+
+# ----------------------------------------------------------------------
+# Student search and filter flow
+# ----------------------------------------------------------------------
+
+def test_create_rejects_missing_academic_year(client):
+    payload = student()
+    payload.pop("academic_year")
+    response = client.post("/api/students", json=payload)
+    assert response.status_code == 400
+    assert "academic year" in response.get_json()["error"]
+
+
+def test_create_rejects_invalid_academic_year(client):
+    response = client.post("/api/students", json=student(academic_year=""))
+    assert response.status_code == 400
+    assert "academic year" in response.get_json()["error"]
+
+    for academic_year in ["26", "abcd", "1999", "2101"]:
+        response = client.post("/api/students", json=student(academic_year=academic_year))
+        assert response.status_code == 400
+        assert "Academic year" in response.get_json()["error"]
+
+
+def test_filter_by_department(client):
+    client.post("/api/students", json=student(roll_number="IT001", department="Information Technology"))
+    client.post("/api/students", json=student(roll_number="CS101", department="Computer Science", email="other@example.com"))
+
+    response = client.get("/api/students?department=computer%20science")
+    assert response.status_code == 200
+    results = response.get_json()
+    assert len(results) == 1
+    assert results[0]["department"] == "Computer Science"
+
+
+def test_filter_by_academic_year(client):
+    client.post("/api/students", json=student(roll_number="IT001", academic_year="2025"))
+    client.post("/api/students", json=student(roll_number="IT002", academic_year="2026", email="other@example.com"))
+
+    response = client.get("/api/students?academic_year=2025")
+    assert response.status_code == 200
+    results = response.get_json()
+    assert len(results) == 1
+    assert results[0]["academic_year"] == "2025"
+
+
+def test_combined_name_department_and_academic_year_filter(client):
+    client.post(
+        "/api/students",
+        json=student(
+            name="Asha Kumar",
+            roll_number="IT001",
+            department="Information Technology",
+            academic_year="2026",
+        ),
+    )
+    client.post(
+        "/api/students",
+        json=student(
+            name="Asha Rao",
+            roll_number="IT002",
+            department="Computer Science",
+            academic_year="2026",
+            email="asha.rao@example.com",
+        ),
+    )
+
+    response = client.get(
+        "/api/students?q=asha&department=Information%20Technology&academic_year=2026"
+    )
+    assert response.status_code == 200
+    results = response.get_json()
+    assert len(results) == 1
+    assert results[0]["name"] == "Asha Kumar"
+
+
+def test_combined_filters_return_empty_list(client):
+    client.post("/api/students", json=student())
+    response = client.get(
+        "/api/students?q=unknown&department=Unknown&academic_year=2026"
+    )
+    assert response.status_code == 200
+    assert response.get_json() == []
+
+
+def test_existing_database_is_migrated_without_losing_students(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "existing.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute("""CREATE TABLE students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            roll_number TEXT NOT NULL UNIQUE,
+            department TEXT NOT NULL,
+            email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        connection.execute(
+            "INSERT INTO students(name, roll_number, department, email) VALUES(?, ?, ?, ?)",
+            ("Asha Kumar", "IT001", "Information Technology", "asha@example.com"),
+        )
+
+    app = create_app({"TESTING": True, "DATABASE": str(database)})
+    with app.test_client() as client:
+        response = client.get("/api/students")
+
+    assert response.status_code == 200
+    records = response.get_json()
+    assert len(records) == 1
+    assert records[0]["name"] == "Asha Kumar"
+    assert records[0]["academic_year"] == ""

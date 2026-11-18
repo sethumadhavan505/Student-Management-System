@@ -2,8 +2,10 @@ const form = document.getElementById("studentForm");
 const tableBody = document.getElementById("studentTable");
 const message = document.getElementById("formMessage");
 const searchInput = document.getElementById("searchInput");
+const departmentFilter = document.getElementById("departmentFilter");
+const academicYearFilter = document.getElementById("academicYearFilter");
 const idInput = document.getElementById("studentId");
-const fields = ["name", "roll_number", "department", "email"];
+const fields = ["name", "roll_number", "department", "academic_year", "email"];
 const localStorageKey = "student-management-system.students.v1";
 const usesBrowserStorage = document.body.dataset.storage === "local";
 let students = [];
@@ -36,12 +38,15 @@ function readLocalStudents() {
   if (!saved) {
     return [];
   }
-
-  const records = JSON.parse(saved);
-  if (!Array.isArray(records)) {
+  try {
+    const records = JSON.parse(saved);
+    if (!Array.isArray(records)) {
+      throw new Error("Saved student records are invalid.");
+    }
+    return records;
+  } catch {
     throw new Error("Saved student records are invalid. Clear this site's browser data to continue.");
   }
-  return records;
 }
 
 function saveLocalStudents(records) {
@@ -55,11 +60,15 @@ function localRequest(url, options) {
 
   if (requestUrl.pathname.endsWith("/api/students") && method === "GET") {
     const query = requestUrl.searchParams.get("q")?.trim().toLowerCase() || "";
+    const department = requestUrl.searchParams.get("department")?.trim().toLowerCase() || "";
+    const academicYear = requestUrl.searchParams.get("academic_year")?.trim() || "";
     return records
       .filter((record) =>
         fields.some((field) =>
           String(record[field] || "").toLowerCase().includes(query),
-        ),
+        ) &&
+        (!department || String(record.department || "").toLowerCase() === department) &&
+        (!academicYear || String(record.academic_year || "") === academicYear),
       )
       .sort((left, right) => Number(right.id) - Number(left.id));
   }
@@ -112,6 +121,24 @@ function validateLocalStudent(values, records, currentId = null) {
     throw new Error(`Please provide: ${missing.join(", ")}.`);
   }
 
+  if (String(values.name).length > 100 || String(values.department).length > 100) {
+    throw new Error("Name and department must be 100 characters or fewer.");
+  }
+  if (String(values.roll_number).length > 30) {
+    throw new Error("Roll number must be 30 characters or fewer.");
+  }
+  if (!/^(?:19|20|21)\d{2}$/.test(String(values.academic_year))) {
+    throw new Error("Academic year must be a four-digit year.");
+  }
+  const academicYear = Number(values.academic_year);
+  if (academicYear < 2000 || academicYear > 2100) {
+    throw new Error("Academic year must be between 2000 and 2100.");
+  }
+  const emailPattern = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/;
+  if (!emailPattern.test(String(values.email))) {
+    throw new Error("Enter a valid email address.");
+  }
+
   const duplicate = records.some(
     (record) =>
       Number(record.id) !== currentId &&
@@ -152,7 +179,7 @@ function escapeHtml(value) {
 function renderStudents(records) {
   if (!records.length) {
     tableBody.innerHTML =
-      '<tr><td colspan="5" class="empty">No student records found. Add your first student.</td></tr>';
+      '<tr><td colspan="6" class="empty">No students match the selected search and filters.</td></tr>';
     return;
   }
 
@@ -166,6 +193,7 @@ function renderStudents(records) {
           </td>
           <td>${escapeHtml(student.roll_number)}</td>
           <td>${escapeHtml(student.department)}</td>
+          <td>${escapeHtml(student.academic_year)}</td>
           <td>${escapeHtml(student.email)}</td>
           <td>
             <div class="actions">
@@ -181,16 +209,26 @@ function renderStudents(records) {
 
 async function loadStudents() {
   try {
-    students = await api(
-      `/api/students?q=${encodeURIComponent(searchInput.value.trim())}`,
-    );
+    const params = new URLSearchParams();
+    if (searchInput.value.trim()) params.set("q", searchInput.value.trim());
+    if (departmentFilter.value.trim()) params.set("department", departmentFilter.value.trim());
+    if (academicYearFilter.value.trim()) params.set("academic_year", academicYearFilter.value.trim());
+    students = await api(`/api/students${params.size ? `?${params}` : ""}`);
     renderStudents(students);
-    document.getElementById("studentCount").textContent = students.length;
+
+    const allStudents = await api("/api/students");
+    document.getElementById("studentCount").textContent = allStudents.length;
     document.getElementById("departmentCount").textContent = new Set(
-      students.map((student) => student.department.toLowerCase()),
+      allStudents.map((student) => student.department.toLowerCase()),
     ).size;
+    document.getElementById("departmentOptions").innerHTML = [...new Set(
+      allStudents.map((student) => student.department).filter(Boolean),
+    )]
+      .sort((left, right) => left.localeCompare(right))
+      .map((department) => `<option value="${escapeHtml(department)}"></option>`)
+      .join("");
   } catch (error) {
-    tableBody.innerHTML = `<tr><td colspan="5" class="empty">${escapeHtml(error.message)}</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message)}</td></tr>`;
   }
 }
 
@@ -251,6 +289,14 @@ tableBody.addEventListener("click", async (event) => {
 
 document.getElementById("cancelButton").addEventListener("click", resetForm);
 document.getElementById("refreshButton").addEventListener("click", loadStudents);
+document.getElementById("clearFiltersButton").addEventListener("click", () => {
+  searchInput.value = "";
+  departmentFilter.value = "";
+  academicYearFilter.value = "";
+  loadStudents();
+});
 searchInput.addEventListener("input", loadStudents);
+departmentFilter.addEventListener("input", loadStudents);
+academicYearFilter.addEventListener("input", loadStudents);
 
 loadStudents();
