@@ -564,3 +564,127 @@ def test_existing_database_is_migrated_without_losing_students(tmp_path):
     assert len(records) == 1
     assert records[0]["name"] == "Asha Kumar"
     assert records[0]["academic_year"] == ""
+
+
+def test_import_creates_all_valid_students_atomically(client):
+    payload = {
+        "students": [
+            student(roll_number="IT001"),
+            student(roll_number="IT002", email="other@example.com"),
+        ]
+    }
+
+    response = client.post("/api/students/import", json=payload)
+
+    assert response.status_code == 201
+    assert response.get_json()["imported"] == 2
+    assert [row["roll_number"] for row in client.get("/api/students").get_json()] == [
+        "IT002",
+        "IT001",
+    ]
+
+
+def test_import_rejects_invalid_row_without_partial_saves(client):
+    response = client.post(
+        "/api/students/import",
+        json={
+            "students": [
+                student(roll_number="IT001"),
+                student(roll_number="IT002", academic_year="2101", email="other@example.com"),
+            ]
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["errors"] == [
+        {"row": 3, "error": "Academic year must be between 2000 and 2100."}
+    ]
+    assert client.get("/api/students").get_json() == []
+
+
+def test_import_rejects_duplicate_roll_number_and_case_insensitive_email(client):
+    client.post("/api/students", json=student())
+    response = client.post(
+        "/api/students/import",
+        json={
+            "students": [
+                student(roll_number="IT002", email="new@example.com"),
+                student(roll_number="IT003", email="ASHA@example.com"),
+            ]
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["errors"] == [
+        {
+            "row": 3,
+            "error": "A student with this roll number or email already exists.",
+        }
+    ]
+    assert len(client.get("/api/students").get_json()) == 1
+
+
+def test_import_rejects_duplicates_within_the_csv_batch(client):
+    response = client.post(
+        "/api/students/import",
+        json={
+            "students": [
+                student(roll_number="IT001", email="first@example.com"),
+                student(roll_number="IT002", email="FIRST@example.com"),
+            ]
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["errors"][0]["row"] == 3
+    assert client.get("/api/students").get_json() == []
+
+
+def test_import_rejects_malformed_or_empty_request(client):
+    malformed = client.post(
+        "/api/students/import",
+        data="{bad json",
+        content_type="application/json",
+    )
+    empty = client.post("/api/students/import", json={"students": []})
+    missing = client.post("/api/students/import", json={})
+
+    assert malformed.status_code == 400
+    assert empty.status_code == 400
+    assert missing.status_code == 400
+    assert client.get("/api/students").get_json() == []
+
+
+def test_import_database_failure_returns_safe_error(client, monkeypatch):
+    import sqlite3
+
+    def raise_db_error(*args, **kwargs):
+        raise sqlite3.DatabaseError("simulated db failure")
+
+    monkeypatch.setattr("sqlite3.connect", raise_db_error)
+    response = client.post(
+        "/api/students/import",
+        json={"students": [student()]},
+    )
+
+    assert response.status_code == 500
+    assert response.get_json() == {"error": "Database operation failed."}
+
+
+def test_import_preview_and_controls_are_present_in_both_frontends(client):
+    project_root = Path(__file__).resolve().parents[1]
+    flask_page = client.get("/").get_data(as_text=True)
+    demo_page = (project_root / "index.html").read_text(encoding="utf-8")
+    script = (project_root / "static" / "js" / "app.js").read_text(encoding="utf-8")
+
+    for page in (flask_page, demo_page):
+        assert 'id="importFile"' in page
+        assert 'id="importPreview"' in page
+        assert 'id="confirmImportButton"' in page
+        assert 'id="yearBreakdown"' in page
+
+    assert '"/api/students/import"' in script
+    assert "function parseCsv(text)" in script
+    assert "function renderImportPreview" in script
+    assert "CSV is missing required columns:" in script
+    assert "CSV contains duplicate column headers." in script
