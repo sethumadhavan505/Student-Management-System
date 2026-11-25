@@ -106,7 +106,9 @@ def create_app(test_config=None):
         if not isinstance(data, dict):
             return None, "Request body must be a JSON object."
         keys=("name","roll_number","department","academic_year","email")
-        item={k:str(data.get(k,"")).strip() for k in keys}
+        if any(not isinstance(data.get(key, ""), str) for key in keys):
+            return None, "Student fields must be text."
+        item={k:data.get(k,"").strip() for k in keys}
         missing=[k for k,v in item.items() if not v]
         if missing:
             labels={
@@ -233,13 +235,13 @@ def create_app(test_config=None):
             params=[]
             if q:
                 conditions.append(
-                    "("
+                    "(CAST(id AS TEXT) LIKE ? OR "
                     + " OR ".join(
                         f"{field} LIKE ?" for field in SEARCHABLE_FIELDS
                     )
                     + ")"
                 )
-                params.extend([f"%{q}%"] * len(SEARCHABLE_FIELDS))
+                params.extend([f"%{q}%"] * (len(SEARCHABLE_FIELDS) + 1))
             if department:
                 conditions.append("department COLLATE NOCASE = ?")
                 params.append(department)
@@ -277,22 +279,71 @@ def create_app(test_config=None):
     @app.post("/api/students")
     def create_student():
         try:
-            item,error=validate(request.get_json(silent=True) or {})
-            if error: return jsonify({"error":error}),400
+            item,error=validate(request.get_json(silent=True))
+            if error:
+                return jsonify({"error":error}),400
             cur=db().execute("INSERT INTO students(name,roll_number,department,academic_year,email) VALUES(?,?,?,?,?)",
               (item["name"],item["roll_number"],item["department"],item["academic_year"],item["email"]))
             db().commit()
             row=db().execute("SELECT * FROM students WHERE id=?",(cur.lastrowid,)).fetchone()
-        except sqlite3.IntegrityError: return jsonify({"error":"Roll number and email must be unique."}),409
+        except sqlite3.IntegrityError:
+            rollback_db()
+            return jsonify({"error":"Roll number and email must be unique."}),409
         except sqlite3.DatabaseError:
+            rollback_db()
             return jsonify({"error":"Database operation failed."}),500
         return jsonify(dict(row)),201
+
+    @app.post("/api/students/import")
+    def import_students():
+        payload=request.get_json(silent=True)
+        if not isinstance(payload,dict) or not isinstance(payload.get("students"),list):
+            return jsonify({"error":"Request body must include a students array."}),400
+        if not payload["students"]:
+            return jsonify({"error":"Select at least one student to import."}),400
+
+        errors=[]
+        created_ids=[]
+        try:
+            conn=db()
+            conn.execute("BEGIN")
+            for row_number,student_data in enumerate(payload["students"],start=2):
+                item,error=validate(student_data)
+                if error:
+                    errors.append({"row":row_number,"error":error})
+                    continue
+                try:
+                    cur=conn.execute(
+                        "INSERT INTO students(name,roll_number,department,academic_year,email) VALUES(?,?,?,?,?)",
+                        (item["name"],item["roll_number"],item["department"],item["academic_year"],item["email"]),
+                    )
+                    created_ids.append(cur.lastrowid)
+                except sqlite3.IntegrityError:
+                    errors.append({
+                        "row":row_number,
+                        "error":"A student with this roll number or email already exists.",
+                    })
+
+            if errors:
+                conn.rollback()
+                return jsonify({"error":"Import contains invalid rows.","errors":errors}),400
+
+            records=[
+                dict(conn.execute("SELECT * FROM students WHERE id=?",(student_id,)).fetchone())
+                for student_id in created_ids
+            ]
+            conn.commit()
+        except sqlite3.DatabaseError:
+            rollback_db()
+            return jsonify({"error":"Database operation failed."}),500
+        return jsonify({"imported":len(records),"students":records}),201
+
     @app.put("/api/students/<int:student_id>")
     def update_student(student_id):
         try:
             if not db().execute("SELECT id FROM students WHERE id=?",(student_id,)).fetchone():
                 return jsonify({"error":"Student not found."}),404
-            item,error=validate(request.get_json(silent=True) or {},student_id)
+            item,error=validate(request.get_json(silent=True),student_id)
             if error: return jsonify({"error":error}),400
             db().execute("UPDATE students SET name=?,roll_number=?,department=?,academic_year=?,email=? WHERE id=?",
               (item["name"],item["roll_number"],item["department"],item["academic_year"],item["email"],student_id))

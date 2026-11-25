@@ -7,8 +7,13 @@ const departmentFilter = document.getElementById("departmentFilter");
 const academicYearFilter = document.getElementById("academicYearFilter");
 const idInput = document.getElementById("studentId");
 const exportButton = document.getElementById("exportButton");
+const directoryStatus = document.getElementById("directoryStatus");
+const importFile = document.getElementById("importFile");
+const importPreview = document.getElementById("importPreview");
+const importSummary = document.getElementById("importSummary");
+const importPreviewRows = document.getElementById("importPreviewRows");
+const confirmImportButton = document.getElementById("confirmImportButton");
 const fields = ["name", "roll_number", "department", "academic_year", "email"];
-// Keep search fields aligned with SEARCHABLE_FIELDS in app.py.
 const searchableFields = ["name", "roll_number", "department", "email"];
 const maxNameLength = 100;
 const maxDepartmentLength = 100;
@@ -28,7 +33,8 @@ const csvColumns = [
 const localStorageKey = "student-management-system.students.v1";
 const usesBrowserStorage = document.body.dataset.storage === "local";
 let students = [];
-let latestLoadRequest = 0;
+let pendingImport = [];
+let loadSequence = 0;
 let searchTimer;
 
 function showMessage(text, type = "") {
@@ -40,7 +46,9 @@ function getFormValues() {
   return Object.fromEntries(
     fields.map((field) => [
       field,
-      document.getElementById(field).value.trim(),
+      field === "email"
+        ? document.getElementById(field).value
+        : document.getElementById(field).value.trim(),
     ]),
   );
 }
@@ -85,7 +93,7 @@ function localRequest(url, options) {
     const academicYear = requestUrl.searchParams.get("academic_year")?.trim() || "";
     return records
       .filter((record) =>
-        searchableFields.some((field) =>
+        ["id", ...searchableFields].some((field) =>
           String(record[field] || "").toLowerCase().includes(query),
         ) &&
         (!department || String(record.department || "").toLowerCase() === department) &&
@@ -94,23 +102,36 @@ function localRequest(url, options) {
       .sort((left, right) => Number(right.id) - Number(left.id));
   }
 
-  if (requestUrl.pathname.endsWith("/api/students/summary") && method === "GET") {
-    const departments = [...new Set(
-      records.map((record) => record.department).filter(Boolean),
-    )].sort((left, right) => left.localeCompare(right));
-    return {
-      total_students: records.length,
-      department_count: new Set(
-        records
-          .map((record) => String(record.department || "").toLowerCase())
-          .filter(Boolean),
-      ).size,
-      departments,
-    };
-  }
-
   const values = options.body ? JSON.parse(options.body) : {};
   const studentPath = requestUrl.pathname.match(/\/api\/students\/(\d+)$/);
+
+  if (
+    requestUrl.pathname.endsWith("/api/students/import") &&
+    method === "POST"
+  ) {
+    if (!Array.isArray(values.students) || values.students.length === 0) {
+      throw new Error("Select at least one student to import.");
+    }
+    const errors = [];
+    const imported = [];
+    values.students.forEach((value, index) => {
+      const error = getStudentValidationError(value, [...records, ...imported]);
+      if (error) {
+        errors.push(`Row ${index + 2}: ${error}`);
+      } else {
+        imported.push({
+          ...Object.fromEntries(fields.map((field) => [field, value[field].trim()])),
+          id: records.reduce((maxId, record) => Math.max(maxId, Number(record.id) || 0), 0) + imported.length + 1,
+          created_at: new Date().toISOString(),
+        });
+      }
+    });
+    if (errors.length) {
+      throw new Error(`Import contains invalid rows. ${errors.join(" ")}`);
+    }
+    saveLocalStudents([...records, ...imported]);
+    return { imported: imported.length, students: imported };
+  }
 
   if (
     requestUrl.pathname.endsWith("/api/students") &&
@@ -151,41 +172,67 @@ function localRequest(url, options) {
   throw new Error("This action is not supported by browser storage.");
 }
 
-function validateLocalStudent(values, records, currentId = null) {
-  // Mirror the server rules because the Pages demo has no Flask API.
-  const missing = fields.filter((field) => !String(values[field] || "").trim());
-  if (missing.length) {
-    throw new Error(`Please provide: ${missing.join(", ")}.`);
+function getStudentValidationError(values, records, currentId = null) {
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    return "Request body must be a JSON object.";
   }
 
+  if (fields.some((field) => typeof values[field] !== "string")) {
+    return "Student fields must be text.";
+  }
+  const missing = fields.filter((field) => !values[field].trim());
+  if (missing.length) {
+    const labels = {
+      name: "name",
+      roll_number: "roll number",
+      department: "department",
+      academic_year: "academic year",
+      email: "email",
+    };
+    return `Please provide: ${missing.map((field) => labels[field]).join(", ")}.`;
+  }
+
+  const item = Object.fromEntries(fields.map((field) => [field, values[field].trim()]));
+
   if (
-    String(values.name).length > maxNameLength ||
-    String(values.department).length > maxDepartmentLength
+    item.name.length > maxNameLength ||
+    item.department.length > maxDepartmentLength
   ) {
-    throw new Error("Name and department must be 100 characters or fewer.");
+    return "Name and department must be 100 characters or fewer.";
   }
-  if (String(values.roll_number).length > maxRollNumberLength) {
-    throw new Error("Roll number must be 30 characters or fewer.");
+  if (item.roll_number.length > maxRollNumberLength) {
+    return "Roll number must be 30 characters or fewer.";
   }
-  if (!/^(?:19|20|21)\d{2}$/.test(String(values.academic_year))) {
-    throw new Error("Academic year must be a four-digit year.");
+  if (!/^(?:19|20|21)\d{2}$/.test(item.academic_year)) {
+    return "Academic year must be a four-digit year.";
   }
-  const academicYear = Number(values.academic_year);
+  const academicYear = Number(item.academic_year);
   if (academicYear < minAcademicYear || academicYear > maxAcademicYear) {
-    throw new Error("Academic year must be between 2000 and 2100.");
+    return "Academic year must be between 2000 and 2100.";
   }
-  if (!emailPattern.test(String(values.email))) {
-    throw new Error("Enter a valid email address.");
+  if (values.email !== values.email.trim()) {
+    return "Enter a valid email address.";
+  }
+  if (!emailPattern.test(item.email)) {
+    return "Enter a valid email address.";
   }
 
   const duplicate = records.some(
     (record) =>
       Number(record.id) !== currentId &&
-      (record.roll_number === values.roll_number ||
-        String(record.email).toLowerCase() === values.email.toLowerCase()),
+      (record.roll_number === item.roll_number ||
+        String(record.email).toLowerCase() === item.email.toLowerCase()),
   );
   if (duplicate) {
-    throw new Error("A student with this roll number or email already exists.");
+    return "A student with this roll number or email already exists.";
+  }
+  return "";
+}
+
+function validateLocalStudent(values, records, currentId = null) {
+  const error = getStudentValidationError(values, records, currentId);
+  if (error) {
+    throw new Error(error);
   }
 }
 
@@ -206,7 +253,10 @@ async function api(url, options = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || "Request failed.");
+    const rowErrors = Array.isArray(data.errors)
+      ? data.errors.map((item) => `Row ${item.row}: ${item.error}`).join(" ")
+      : "";
+    throw new Error([data.error || "Request failed.", rowErrors].filter(Boolean).join(" "));
   }
   return data;
 }
@@ -288,41 +338,203 @@ function renderStudents(records) {
     .join("");
 }
 
+function setDirectoryStatus(text, type = "") {
+  directoryStatus.textContent = text;
+  directoryStatus.className = `directory-status ${type}`;
+}
+
 async function loadStudents() {
   window.clearTimeout(searchTimer);
-  const requestId = ++latestLoadRequest;
+  const sequence = ++loadSequence;
+  setDirectoryStatus("Loading student records...", "loading");
+  tableBody.innerHTML = '<tr><td colspan="6" class="empty">Loading student records...</td></tr>';
   try {
     const params = new URLSearchParams();
     if (searchInput.value.trim()) params.set("q", searchInput.value.trim());
     if (departmentFilter.value.trim()) params.set("department", departmentFilter.value.trim());
     if (academicYearFilter.value.trim()) params.set("academic_year", academicYearFilter.value.trim());
-    const [filteredStudents, summary] = await Promise.all([
-      api(`/api/students${params.size ? `?${params}` : ""}`),
-      api("/api/students/summary"),
-    ]);
-    if (requestId !== latestLoadRequest) {
+    const matchingStudents = await api(`/api/students${params.size ? `?${params}` : ""}`);
+    const allStudents = await api("/api/students");
+    if (sequence !== loadSequence) {
       return;
     }
-    students = filteredStudents;
+    students = matchingStudents;
     renderStudents(students);
-    document.getElementById("studentCount").textContent = summary.total_students;
-    document.getElementById("departmentCount").textContent = summary.department_count;
-    document.getElementById("departmentOptions").innerHTML = summary.departments
-      .map((department) => `<option value="${escapeHtml(department)}"></option>`)
+    document.getElementById("studentCount").textContent = allStudents.length;
+    document.getElementById("departmentCount").textContent = new Set(
+      allStudents.map((student) => student.department.toLowerCase()),
+    ).size;
+    const selectedDepartment = departmentFilter.value;
+    departmentFilter.innerHTML = '<option value="">All departments</option>' + [...new Set(
+      allStudents.map((student) => student.department).filter(Boolean),
+    )]
+      .sort((left, right) => left.localeCompare(right))
+      .map((department) => {
+        const escapedDepartment = escapeHtml(department);
+        return `<option value="${escapedDepartment}">${escapedDepartment}</option>`;
+      })
       .join("");
+    departmentFilter.value = selectedDepartment;
+    const years = Object.entries(allStudents.reduce((counts, student) => {
+      counts[student.academic_year] = (counts[student.academic_year] || 0) + 1;
+      return counts;
+    }, {}))
+      .filter(([year]) => year)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([year, count]) => `${year}: ${count}`);
+    document.getElementById("yearBreakdown").textContent = years.join(" · ") || "No records";
+    setDirectoryStatus(
+      students.length
+        ? `Showing ${students.length} matching student record${students.length === 1 ? "" : "s"}.`
+        : "No student records match the selected search and filters.",
+      students.length ? "success" : "empty",
+    );
   } catch (error) {
-    if (requestId !== latestLoadRequest) {
+    if (sequence !== loadSequence) {
       return;
     }
     tableBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message)}</td></tr>`;
     resultsStatus.textContent = `Unable to load student records: ${error.message}`;
+    setDirectoryStatus(error.message, "error");
   }
 }
 
 function scheduleStudentLoad() {
   window.clearTimeout(searchTimer);
-  latestLoadRequest += 1;
+  loadSequence += 1;
   searchTimer = window.setTimeout(loadStudents, 250);
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let inQuotes = false;
+  let quoteClosed = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inQuotes) {
+      if (character === '"' && text[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else if (character === '"') {
+        inQuotes = false;
+        quoteClosed = true;
+      } else {
+        value += character;
+      }
+    } else if (character === '"') {
+      if (value !== "" || quoteClosed) {
+        throw new Error("CSV contains a quote in an invalid position.");
+      }
+      inQuotes = true;
+    } else if (character === ",") {
+      row.push(value);
+      value = "";
+      quoteClosed = false;
+    } else if (character === "\n" || character === "\r") {
+      row.push(value);
+      if (row.some((cell) => cell.trim())) {
+        rows.push(row);
+      }
+      row = [];
+      value = "";
+      quoteClosed = false;
+      if (character === "\r" && text[index + 1] === "\n") {
+        index += 1;
+      }
+    } else {
+      if (quoteClosed && character.trim()) {
+        throw new Error("CSV contains characters after a quoted value.");
+      }
+      if (!quoteClosed) {
+        value += character;
+      }
+    }
+  }
+
+  if (inQuotes) {
+    throw new Error("CSV contains an unclosed quoted value.");
+  }
+  row.push(value);
+  if (row.some((cell) => cell.trim())) {
+    rows.push(row);
+  }
+  return rows;
+}
+
+function normalizeCsvHeader(value) {
+  return value
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+function renderImportPreview(rows, errors, messageText = "") {
+  pendingImport = errors.length ? [] : rows.map((row) => row.student);
+  importSummary.textContent = messageText || (
+    errors.length
+      ? `${errors.length} row${errors.length === 1 ? "" : "s"} need correction. No records will be imported.`
+      : `${rows.length} student record${rows.length === 1 ? "" : "s"} validated. Review the preview before importing.`
+  );
+  importSummary.className = `import-summary ${errors.length || messageText ? "error" : "success"}`;
+  importPreviewRows.innerHTML = rows.map((row) => `
+    <tr>
+      <td>${row.rowNumber}</td>
+      <td>${escapeHtml(row.student.name || "")}</td>
+      <td>${escapeHtml(row.student.roll_number || "")}</td>
+      <td>${escapeHtml(row.student.department || "")}</td>
+      <td>${escapeHtml(row.student.academic_year || "")}</td>
+      <td>${escapeHtml(row.student.email || "")}</td>
+      <td class="${row.error ? "validation-error" : "validation-ok"}">${escapeHtml(row.error || "Ready")}</td>
+    </tr>
+  `).join("");
+  confirmImportButton.disabled = errors.length > 0 || rows.length === 0;
+  importPreview.classList.remove("hidden");
+}
+
+async function previewCsvImport(file) {
+  try {
+    const parsedRows = parseCsv(await file.text());
+    if (parsedRows.length < 2) {
+      throw new Error("CSV must include a header and at least one student row.");
+    }
+    const headerNames = parsedRows[0].map(normalizeCsvHeader);
+    if (new Set(headerNames).size !== headerNames.length) {
+      throw new Error("CSV contains duplicate column headers.");
+    }
+    const indexes = Object.fromEntries(headerNames.map((name, index) => [name, index]));
+    const missing = fields.filter((field) => indexes[field] === undefined);
+    if (missing.length) {
+      throw new Error(`CSV is missing required columns: ${missing.join(", ")}.`);
+    }
+
+    const existing = await api("/api/students");
+    const accepted = [];
+    const rows = parsedRows.slice(1).map((cells, index) => {
+      const candidate = Object.fromEntries(fields.map((field) => [
+        field,
+        field === "email"
+          ? String(cells[indexes[field]] || "")
+          : String(cells[indexes[field]] || "").trim(),
+      ]));
+      const error = cells.length !== headerNames.length
+        ? "Row has a different number of values than the header."
+        : getStudentValidationError(candidate, [...existing, ...accepted]);
+      if (!error) {
+        accepted.push(candidate);
+      }
+      return { rowNumber: index + 2, student: candidate, error };
+    });
+    const errors = rows.filter((row) => row.error);
+    renderImportPreview(rows, errors);
+  } catch (error) {
+    pendingImport = [];
+    renderImportPreview([], [error], error.message);
+  }
 }
 
 form.addEventListener("submit", async (event) => {
@@ -389,8 +601,37 @@ document.getElementById("clearFiltersButton").addEventListener("click", () => {
   loadStudents();
 });
 exportButton.addEventListener("click", exportStudentsToCsv);
+importFile.addEventListener("change", () => {
+  const [file] = importFile.files;
+  if (file) {
+    previewCsvImport(file);
+  }
+});
+document.getElementById("cancelImportButton").addEventListener("click", () => {
+  pendingImport = [];
+  importFile.value = "";
+  importPreview.classList.add("hidden");
+});
+confirmImportButton.addEventListener("click", async () => {
+  confirmImportButton.disabled = true;
+  try {
+    const result = await api("/api/students/import", {
+      method: "POST",
+      body: JSON.stringify({ students: pendingImport }),
+    });
+    pendingImport = [];
+    importFile.value = "";
+    importPreview.classList.add("hidden");
+    showMessage(`Imported ${result.imported} student record${result.imported === 1 ? "" : "s"}.`, "success");
+    await loadStudents();
+  } catch (error) {
+    importSummary.textContent = error.message;
+    importSummary.className = "import-summary error";
+    confirmImportButton.disabled = false;
+  }
+});
 searchInput.addEventListener("input", scheduleStudentLoad);
-departmentFilter.addEventListener("input", scheduleStudentLoad);
+departmentFilter.addEventListener("change", scheduleStudentLoad);
 academicYearFilter.addEventListener("input", scheduleStudentLoad);
 
 loadStudents();

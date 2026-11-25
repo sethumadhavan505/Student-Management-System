@@ -20,7 +20,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -179,6 +180,12 @@ input {
   font-size: 27px;
 }
 
+.stat-card strong.year-breakdown {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.8fr);
@@ -249,7 +256,8 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-width: 0;
   padding: 11px 12px;
@@ -261,7 +269,8 @@ input {
   font-size: 13px;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: #9b4cc1;
   box-shadow: 0 0 0 3px #9b4cc11a;
 }
@@ -284,9 +293,18 @@ input:focus {
 }
 
 .btn:focus-visible,
-.mini-btn:focus-visible {
+.mini-btn:focus-visible,
+#importFile:focus-visible + .file-label {
   outline: 3px solid #9b4cc166;
   outline-offset: 2px;
+}
+
+.file-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  cursor: pointer;
 }
 
 .primary {
@@ -316,6 +334,67 @@ input:focus {
 
 .message.success {
   color: #167342;
+}
+
+.directory-status {
+  min-height: 17px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.directory-status.loading {
+  color: var(--purple);
+}
+
+.directory-status.error,
+.import-summary.error,
+.validation-error {
+  color: #b42318;
+}
+
+.directory-status.success,
+.import-summary.success,
+.validation-ok {
+  color: #167342;
+}
+
+.import-preview {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fcfbfe;
+}
+
+.import-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.import-heading h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.import-summary {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.validation-error,
+.validation-ok {
+  white-space: normal;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .search-wrap {
@@ -504,5 +583,9 @@ footer {
 
   .list-actions {
     justify-content: flex-end;
+  }
+
+  .import-preview {
+    padding: 12px;
   }
 }

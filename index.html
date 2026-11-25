@@ -51,9 +51,9 @@
           <small>Unique departments</small>
         </article>
         <article class="stat-card">
-          <span>Quick search</span>
-          <strong aria-hidden="true">⌕</strong>
-          <small>Search by name, roll no. or email</small>
+          <span>Academic-year breakdown</span>
+          <strong id="yearBreakdown" class="year-breakdown">—</strong>
+          <small>Students by academic year</small>
         </article>
       </section>
 
@@ -149,6 +149,8 @@
               <button class="btn secondary" id="exportButton" type="button">
                 Export CSV
               </button>
+              <input id="importFile" class="sr-only" type="file" accept=".csv,text/csv">
+              <label class="btn secondary file-label" for="importFile">Import CSV</label>
             </div>
           </div>
 
@@ -159,19 +161,14 @@
               <input
                 id="searchInput"
                 type="search"
-                placeholder="Search name, roll no., department, or email..."
+                placeholder="Search name, student ID, roll no., department, or email..."
                 autocomplete="off"
               >
             </div>
             <label class="sr-only" for="departmentFilter">Filter by department</label>
-            <input
-              id="departmentFilter"
-              type="search"
-              list="departmentOptions"
-              placeholder="All departments"
-              autocomplete="off"
-            >
-            <datalist id="departmentOptions"></datalist>
+            <select id="departmentFilter">
+              <option value="">All departments</option>
+            </select>
             <label class="sr-only" for="academicYearFilter">Filter by academic year</label>
             <input
               id="academicYearFilter"
@@ -185,6 +182,34 @@
             </button>
           </div>
 
+          <section id="importPreview" class="import-preview hidden" aria-labelledby="importTitle">
+            <div class="import-heading">
+              <h3 id="importTitle">CSV import preview</h3>
+              <button class="btn secondary" id="cancelImportButton" type="button">Cancel</button>
+            </div>
+            <p id="importSummary" class="import-summary" aria-live="polite"></p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">CSV row</th>
+                    <th scope="col">Name</th>
+                    <th scope="col">Roll number</th>
+                    <th scope="col">Department</th>
+                    <th scope="col">Academic year</th>
+                    <th scope="col">Email</th>
+                    <th scope="col">Validation</th>
+                  </tr>
+                </thead>
+                <tbody id="importPreviewRows"></tbody>
+              </table>
+            </div>
+            <button class="btn primary" id="confirmImportButton" type="button" disabled>
+              Import students
+            </button>
+          </section>
+
+          <p id="directoryStatus" class="directory-status" role="status" aria-live="polite">Loading student records...</p>
           <div class="table-wrap">
             <table>
               <thead>
