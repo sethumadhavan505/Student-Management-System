@@ -1,12 +1,55 @@
-import pytest
+import re
 from pathlib import Path
-from app import create_app
+
+import pytest
+
+from app import (
+    EMAIL_PATTERN,
+    MAX_DEPARTMENT_LENGTH,
+    MAX_NAME_LENGTH,
+    MAX_ROLL_NUMBER_LENGTH,
+    MAX_ACADEMIC_YEAR,
+    MIN_ACADEMIC_YEAR,
+    create_app,
+)
+from werkzeug.security import generate_password_hash
+
+TEST_PASSWORD_HASH = generate_password_hash("test-password")
+
+
+def sign_in(client):
+    login_page = client.get("/login")
+    login_token = re.search(
+        rb'name="csrf_token" value="([^"]+)"', login_page.data
+    ).group(1).decode()
+    login_response = client.post(
+        "/login",
+        data={
+            "csrf_token": login_token,
+            "username": "test-admin",
+            "password": "test-password",
+        },
+    )
+    assert login_response.status_code == 302
+    dashboard = client.get("/")
+    csrf_token = re.search(
+        rb'name="csrf-token" content="([^"]+)"', dashboard.data
+    ).group(1).decode()
+    client.environ_base["HTTP_X_CSRF_TOKEN"] = csrf_token
 
 
 @pytest.fixture()
 def client(tmp_path):
-    app=create_app({"TESTING":True,"DATABASE":str(tmp_path/"test.sqlite")})
-    with app.test_client() as client: yield client
+    app=create_app({
+        "TESTING": True,
+        "DATABASE": str(tmp_path / "test.sqlite"),
+        "SECRET_KEY": "test-secret-key-for-session-signing",
+        "ADMIN_USERNAME": "test-admin",
+        "ADMIN_PASSWORD_HASH": TEST_PASSWORD_HASH,
+    })
+    with app.test_client() as client:
+        sign_in(client)
+        yield client
 
 
 def student(**overrides):
@@ -18,6 +61,94 @@ def test_home_page(client):
     response=client.get("/")
     assert response.status_code==200
     assert b"Student Management System" in response.data
+    assert b"Sign out" in response.data
+
+
+def test_student_api_requires_authenticated_session(client):
+    anonymous_client = client.application.test_client()
+    response = anonymous_client.get("/api/students")
+
+    assert response.status_code == 401
+    assert response.get_json() == {"error": "Authentication required."}
+    assert anonymous_client.get("/").status_code == 302
+
+
+def test_login_rejects_bad_credentials_and_missing_csrf(client):
+    anonymous_client = client.application.test_client()
+    login_page = anonymous_client.get("/login")
+    token = re.search(
+        rb'name="csrf_token" value="([^"]+)"', login_page.data
+    ).group(1).decode()
+
+    missing_csrf = anonymous_client.post(
+        "/login",
+        data={"username": "test-admin", "password": "test-password"},
+    )
+    assert missing_csrf.status_code == 400
+
+    invalid_credentials = anonymous_client.post(
+        "/login",
+        data={
+            "csrf_token": token,
+            "username": "not-é-admin",
+            "password": "wrong-password",
+        },
+    )
+    assert invalid_credentials.status_code == 401
+    assert b"Invalid username or password." in invalid_credentials.data
+
+
+def test_api_mutations_require_csrf_token(client):
+    anonymous_client = client.application.test_client()
+    login_page = anonymous_client.get("/login")
+    token = re.search(
+        rb'name="csrf_token" value="([^"]+)"', login_page.data
+    ).group(1).decode()
+    anonymous_client.post(
+        "/login",
+        data={
+            "csrf_token": token,
+            "username": "test-admin",
+            "password": "test-password",
+        },
+    )
+
+    response = anonymous_client.post(
+        "/api/students",
+        json=student(),
+        headers={"X-CSRF-Token": "invalid-é"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid or missing CSRF token."}
+
+
+def test_logout_clears_authenticated_session(client):
+    dashboard = client.get("/")
+    csrf_token = re.search(
+        rb'name="csrf-token" content="([^"]+)"', dashboard.data
+    ).group(1).decode()
+
+    response = client.post("/logout", data={"csrf_token": csrf_token})
+
+    assert response.status_code == 302
+    assert client.get("/api/students").status_code == 401
+
+
+def test_login_fails_closed_when_authentication_is_unconfigured(tmp_path):
+    app = create_app({
+        "TESTING": True,
+        "DATABASE": str(tmp_path / "unconfigured.sqlite"),
+        "SECRET_KEY": None,
+        "ADMIN_USERNAME": None,
+        "ADMIN_PASSWORD_HASH": None,
+    })
+    client = app.test_client()
+
+    assert client.get("/login").status_code == 503
+    response = client.get("/api/students")
+    assert response.status_code == 503
+    assert response.get_json() == {"error": "Authentication is not configured."}
 
 
 def test_export_button_is_available_in_both_frontends(client):
@@ -34,9 +165,68 @@ def test_export_uses_student_fields_and_csv_escaping(client):
     assert '["created_at", "Created At"]' in script
     assert '["academic_year", "Academic Year"]' in script
     assert 'function escapeCsvValue(value)' in script
-    assert "text.replace(/\"/g, '\"\"')" in script
+    assert "safeText.replace(/\"/g, '\"\"')" in script
+    assert r"/^[\u0000-\u0020\uFEFF]*[=+\-@]/.test(text)" in script
+    assert "`'${text}`" in script
+    assert ": text;" in script
     assert "students.map((student)" in script
     assert "exportButton.addEventListener(\"click\", exportStudentsToCsv)" in script
+
+
+def test_search_fields_match_between_api_and_browser_storage(client):
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "static" / "js" / "app.js").read_text(encoding="utf-8")
+    backend = (root / "app.py").read_text(encoding="utf-8")
+
+    expected_js = '["name", "roll_number", "department", "email"]'
+    assert f"const searchableFields = {expected_js};" in script
+    assert 'SEARCHABLE_FIELDS = ("name", "roll_number", "department", "email")' in backend
+
+
+def test_validation_rules_match_between_flask_and_browser_storage(client):
+    script = (
+        Path(__file__).resolve().parents[1] / "static" / "js" / "app.js"
+    ).read_text(encoding="utf-8")
+    backend = (Path(__file__).resolve().parents[1] / "app.py").read_text(
+        encoding="utf-8"
+    )
+    matching_rules = [
+        (f"MAX_NAME_LENGTH = {MAX_NAME_LENGTH}", f"maxNameLength = {MAX_NAME_LENGTH}"),
+        (
+            f"MAX_DEPARTMENT_LENGTH = {MAX_DEPARTMENT_LENGTH}",
+            f"maxDepartmentLength = {MAX_DEPARTMENT_LENGTH}",
+        ),
+        (
+            f"MAX_ROLL_NUMBER_LENGTH = {MAX_ROLL_NUMBER_LENGTH}",
+            f"maxRollNumberLength = {MAX_ROLL_NUMBER_LENGTH}",
+        ),
+        (f"MIN_ACADEMIC_YEAR = {MIN_ACADEMIC_YEAR}", f"minAcademicYear = {MIN_ACADEMIC_YEAR}"),
+        (f"MAX_ACADEMIC_YEAR = {MAX_ACADEMIC_YEAR}", f"maxAcademicYear = {MAX_ACADEMIC_YEAR}"),
+    ]
+
+    for python_rule, javascript_rule in matching_rules:
+        assert python_rule in backend
+        assert javascript_rule in script
+    assert f"const emailPattern = /^{EMAIL_PATTERN}$/" in script
+
+
+def test_dynamic_results_are_announced_and_actions_are_labeled(client):
+    page = client.get("/").get_data(as_text=True)
+    demo_page = (
+        Path(__file__).resolve().parents[1] / "index.html"
+    ).read_text(encoding="utf-8")
+    script = client.get("/static/js/app.js").get_data(as_text=True)
+
+    assert (
+        'id="resultsStatus" class="sr-only" role="status" aria-live="polite"'
+        in page
+    )
+    assert (
+        'id="resultsStatus" class="sr-only" role="status" aria-live="polite"'
+        in demo_page
+    )
+    assert 'aria-label="Edit ${escapeHtml(student.name)}"' in script
+    assert 'aria-label="Delete ${escapeHtml(student.name)}"' in script
 
 
 def test_create_and_list(client):
@@ -60,6 +250,38 @@ def test_update_delete(client):
     sid=client.post("/api/students",json=student()).json["id"]
     assert client.put(f"/api/students/{sid}",json=student(name="Asha Updated")).status_code==200
     assert client.delete(f"/api/students/{sid}").status_code==200
+
+
+def test_student_summary_returns_counts_and_departments(client):
+    client.post("/api/students", json=student())
+    client.post(
+        "/api/students",
+        json=student(
+            roll_number="CS101",
+            department="Computer Science",
+            email="other@example.com",
+        ),
+    )
+    client.post(
+        "/api/students",
+        json=student(
+            roll_number="IT002",
+            department="information technology",
+            email="third@example.com",
+        ),
+    )
+
+    response = client.get("/api/students/summary")
+
+    assert response.status_code == 200
+    summary = response.get_json()
+    assert summary["total_students"] == 3
+    assert summary["department_count"] == 2
+    assert set(summary["departments"]) == {
+        "Computer Science",
+        "Information Technology",
+        "information technology",
+    }
 
 # ----------------------------------------------------------------------
 # Additional tests for create flow
@@ -497,6 +719,32 @@ def test_database_error_on_list_returns_safe_error(client, monkeypatch):
     assert response.get_json() == {"error": "Database operation failed."}
 
 
+def test_database_error_on_update_returns_safe_error(client, monkeypatch):
+    import sqlite3
+
+    def raise_db_error(*args, **kwargs):
+        raise sqlite3.DatabaseError("simulated db failure")
+
+    monkeypatch.setattr("sqlite3.connect", raise_db_error)
+    response = client.put("/api/students/1", json=student())
+
+    assert response.status_code == 500
+    assert response.get_json() == {"error": "Database operation failed."}
+
+
+def test_database_error_on_delete_returns_safe_error(client, monkeypatch):
+    import sqlite3
+
+    def raise_db_error(*args, **kwargs):
+        raise sqlite3.DatabaseError("simulated db failure")
+
+    monkeypatch.setattr("sqlite3.connect", raise_db_error)
+    response = client.delete("/api/students/1")
+
+    assert response.status_code == 500
+    assert response.get_json() == {"error": "Database operation failed."}
+
+
 # ----------------------------------------------------------------------
 # Student search and filter flow
 # ----------------------------------------------------------------------
@@ -609,8 +857,15 @@ def test_existing_database_is_migrated_without_losing_students(tmp_path):
             ("Asha Kumar", "IT001", "Information Technology", "asha@example.com"),
         )
 
-    app = create_app({"TESTING": True, "DATABASE": str(database)})
+    app = create_app({
+        "TESTING": True,
+        "DATABASE": str(database),
+        "SECRET_KEY": "test-secret-key-for-session-signing",
+        "ADMIN_USERNAME": "test-admin",
+        "ADMIN_PASSWORD_HASH": TEST_PASSWORD_HASH,
+    })
     with app.test_client() as client:
+        sign_in(client)
         response = client.get("/api/students")
 
     assert response.status_code == 200

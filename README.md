@@ -46,7 +46,9 @@ Student-Management-System/
 ├── requirements.txt
 ├── README.md
 ├── .gitignore
-├── templates/index.html
+├── templates/
+│   ├── index.html
+│   └── login.html
 ├── static/css/style.css
 ├── static/js/app.js
 ├── .github/workflows/pages.yml
@@ -66,12 +68,21 @@ Student-Management-System/
    .\.venv\Scripts\Activate.ps1
    ```
    If PowerShell blocks activation, use Command Prompt: `.venv\Scripts\activate.bat`.
-4. Install and run:
+4. Configure the single administrator account and run:
    ```powershell
    python -m pip install -r requirements.txt
+   $env:STUDENT_SECRET_KEY = python -c "import secrets; print(secrets.token_hex(32))"
+   $env:STUDENT_ADMIN_USERNAME = "admin"
+   $env:STUDENT_ADMIN_PASSWORD_HASH = python -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass()))"
    python app.py
    ```
-5. Open http://127.0.0.1:5000.
+   The password prompt will not echo the password. Keep these environment
+   variables private and set them in the hosting environment for WSGI
+   deployments. Use a secret key at least 32 characters long. The Flask app
+   refuses to start directly if the required credentials are missing or the
+   secret key is too short. For HTTPS deployments, set
+   `$env:STUDENT_COOKIE_SECURE = "1"` before starting the application.
+5. Open http://127.0.0.1:5000 and sign in with the configured credentials.
 
 The `students.db` SQLite file is generated on first run.
 
@@ -88,6 +99,7 @@ frontends.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/api/students?q=...` | List/search students |
+| GET | `/api/students/summary` | Return student and department counts |
 | POST | `/api/students` | Create a student |
 | POST | `/api/students/import` | Atomically import validated students |
 | PUT | `/api/students/<id>` | Update a student |
@@ -98,10 +110,15 @@ Example JSON:
 {"name":"Asha Kumar","roll_number":"IT001","department":"Information Technology","academic_year":"2026","email":"asha@example.com"}
 ```
 
+The Flask dashboard and API require the configured administrator session.
+State-changing requests also require a CSRF token; the browser dashboard
+supplies it automatically. GitHub Pages remains a separate browser-local demo
+and does not use this login or share records with Flask.
+
 CSV import JSON accepts a `students` array containing records with the same
 fields as the create endpoint. A successful response includes the number of
 imported records and their saved values. An invalid request returns row-level
 errors and saves none of the records.
 
 ## Production considerations
-This is a learning/demo starter, not production-ready student information software. Before production, add authentication and role-based authorization, CSRF protection, secure secret management, migrations, backups, logging, and deployment configuration. Do not use real student personal data in a public demo.
+This is a learning/demo starter, not production-ready student information software. The Flask version provides a single administrator login, but does not provide multiple users, roles, account recovery, or login rate limiting. Use HTTPS, secure secret management, restricted network access, migrations, backups, monitoring, and a production WSGI server before deployment. Do not use real student personal data in a public demo.

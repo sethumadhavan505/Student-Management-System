@@ -1,6 +1,7 @@
 const form = document.getElementById("studentForm");
 const tableBody = document.getElementById("studentTable");
 const message = document.getElementById("formMessage");
+const resultsStatus = document.getElementById("resultsStatus");
 const searchInput = document.getElementById("searchInput");
 const departmentFilter = document.getElementById("departmentFilter");
 const academicYearFilter = document.getElementById("academicYearFilter");
@@ -13,7 +14,13 @@ const importSummary = document.getElementById("importSummary");
 const importPreviewRows = document.getElementById("importPreviewRows");
 const confirmImportButton = document.getElementById("confirmImportButton");
 const fields = ["name", "roll_number", "department", "academic_year", "email"];
-const searchableFields = ["id", "name", "roll_number", "department", "email"];
+const searchableFields = ["name", "roll_number", "department", "email"];
+const maxNameLength = 100;
+const maxDepartmentLength = 100;
+const maxRollNumberLength = 30;
+const minAcademicYear = 2000;
+const maxAcademicYear = 2100;
+const emailPattern = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/;
 const csvColumns = [
   ["id", "ID"],
   ["name", "Name"],
@@ -28,6 +35,7 @@ const usesBrowserStorage = document.body.dataset.storage === "local";
 let students = [];
 let pendingImport = [];
 let loadSequence = 0;
+let searchTimer;
 
 function showMessage(text, type = "") {
   message.textContent = text;
@@ -85,7 +93,7 @@ function localRequest(url, options) {
     const academicYear = requestUrl.searchParams.get("academic_year")?.trim() || "";
     return records
       .filter((record) =>
-        searchableFields.some((field) =>
+        ["id", ...searchableFields].some((field) =>
           String(record[field] || "").toLowerCase().includes(query),
         ) &&
         (!department || String(record.department || "").toLowerCase() === department) &&
@@ -186,23 +194,25 @@ function getStudentValidationError(values, records, currentId = null) {
 
   const item = Object.fromEntries(fields.map((field) => [field, values[field].trim()]));
 
-  if (item.name.length > 100 || item.department.length > 100) {
+  if (
+    item.name.length > maxNameLength ||
+    item.department.length > maxDepartmentLength
+  ) {
     return "Name and department must be 100 characters or fewer.";
   }
-  if (item.roll_number.length > 30) {
+  if (item.roll_number.length > maxRollNumberLength) {
     return "Roll number must be 30 characters or fewer.";
   }
   if (!/^(?:19|20|21)\d{2}$/.test(item.academic_year)) {
     return "Academic year must be a four-digit year.";
   }
   const academicYear = Number(item.academic_year);
-  if (academicYear < 2000 || academicYear > 2100) {
+  if (academicYear < minAcademicYear || academicYear > maxAcademicYear) {
     return "Academic year must be between 2000 and 2100.";
   }
   if (values.email !== values.email.trim()) {
     return "Enter a valid email address.";
   }
-  const emailPattern = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}$/;
   if (!emailPattern.test(item.email)) {
     return "Enter a valid email address.";
   }
@@ -231,9 +241,15 @@ async function api(url, options = {}) {
     return localRequest(url, options);
   }
 
+  const headers = new Headers(options.headers || {});
+  headers.set("Content-Type", "application/json");
+  if (["POST", "PUT", "PATCH", "DELETE"].includes((options.method || "GET").toUpperCase())) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
+    headers.set("X-CSRF-Token", csrfToken);
+  }
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -257,7 +273,10 @@ function escapeHtml(value) {
 
 function escapeCsvValue(value) {
   const text = value == null ? "" : String(value);
-  return `"${text.replace(/"/g, '""')}"`;
+  const safeText = /^[\u0000-\u0020\uFEFF]*[=+\-@]/.test(text)
+    ? `'${text}`
+    : text;
+  return `"${safeText.replace(/"/g, '""')}"`;
 }
 
 function exportStudentsToCsv() {
@@ -290,9 +309,11 @@ function renderStudents(records) {
   if (!records.length) {
     tableBody.innerHTML =
       '<tr><td colspan="6" class="empty">No students match the selected search and filters.</td></tr>';
+    resultsStatus.textContent = "No students match the selected search and filters.";
     return;
   }
 
+  resultsStatus.textContent = `${records.length} student record${records.length === 1 ? "" : "s"} found.`;
   tableBody.innerHTML = records
     .map(
       (student) => `
@@ -307,8 +328,8 @@ function renderStudents(records) {
           <td>${escapeHtml(student.email)}</td>
           <td>
             <div class="actions">
-              <button class="mini-btn" data-edit="${escapeHtml(student.id)}" type="button">Edit</button>
-              <button class="mini-btn delete" data-delete="${escapeHtml(student.id)}" type="button">Delete</button>
+              <button class="mini-btn" data-edit="${escapeHtml(student.id)}" aria-label="Edit ${escapeHtml(student.name)}" type="button">Edit</button>
+              <button class="mini-btn delete" data-delete="${escapeHtml(student.id)}" aria-label="Delete ${escapeHtml(student.name)}" type="button">Delete</button>
             </div>
           </td>
         </tr>
@@ -323,6 +344,7 @@ function setDirectoryStatus(text, type = "") {
 }
 
 async function loadStudents() {
+  window.clearTimeout(searchTimer);
   const sequence = ++loadSequence;
   setDirectoryStatus("Loading student records...", "loading");
   tableBody.innerHTML = '<tr><td colspan="6" class="empty">Loading student records...</td></tr>';
@@ -372,8 +394,15 @@ async function loadStudents() {
       return;
     }
     tableBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message)}</td></tr>`;
+    resultsStatus.textContent = `Unable to load student records: ${error.message}`;
     setDirectoryStatus(error.message, "error");
   }
+}
+
+function scheduleStudentLoad() {
+  window.clearTimeout(searchTimer);
+  loadSequence += 1;
+  searchTimer = window.setTimeout(loadStudents, 250);
 }
 
 function parseCsv(text) {
@@ -601,8 +630,8 @@ confirmImportButton.addEventListener("click", async () => {
     confirmImportButton.disabled = false;
   }
 });
-searchInput.addEventListener("input", loadStudents);
-departmentFilter.addEventListener("change", loadStudents);
-academicYearFilter.addEventListener("input", loadStudents);
+searchInput.addEventListener("input", scheduleStudentLoad);
+departmentFilter.addEventListener("change", scheduleStudentLoad);
+academicYearFilter.addEventListener("input", scheduleStudentLoad);
 
 loadStudents();
