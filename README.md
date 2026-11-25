@@ -4,6 +4,8 @@ A responsive student-record management starter built with **Python, Flask, SQLit
 
 ## Features
 - Add, view, search, update, and delete student records (CRUD)
+- Search by student name, displayed student ID, roll number, department, or email; combine search with department and academic-year filters, or clear all filters
+- Department filter options are populated from saved records; unmatched searches show an explanatory message
 - Required-field and email-format validation
 - Unique roll numbers and case-insensitive email addresses
 - CSV import with a row-by-row preview and all-or-nothing validation

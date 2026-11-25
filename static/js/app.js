@@ -13,7 +13,7 @@ const importSummary = document.getElementById("importSummary");
 const importPreviewRows = document.getElementById("importPreviewRows");
 const confirmImportButton = document.getElementById("confirmImportButton");
 const fields = ["name", "roll_number", "department", "academic_year", "email"];
-const searchableFields = ["name", "roll_number", "department", "email"];
+const searchableFields = ["id", "name", "roll_number", "department", "email"];
 const csvColumns = [
   ["id", "ID"],
   ["name", "Name"],
@@ -342,12 +342,17 @@ async function loadStudents() {
     document.getElementById("departmentCount").textContent = new Set(
       allStudents.map((student) => student.department.toLowerCase()),
     ).size;
-    document.getElementById("departmentOptions").innerHTML = [...new Set(
+    const selectedDepartment = departmentFilter.value;
+    departmentFilter.innerHTML = '<option value="">All departments</option>' + [...new Set(
       allStudents.map((student) => student.department).filter(Boolean),
     )]
       .sort((left, right) => left.localeCompare(right))
-      .map((department) => `<option value="${escapeHtml(department)}"></option>`)
+      .map((department) => {
+        const escapedDepartment = escapeHtml(department);
+        return `<option value="${escapedDepartment}">${escapedDepartment}</option>`;
+      })
       .join("");
+    departmentFilter.value = selectedDepartment;
     const years = Object.entries(allStudents.reduce((counts, student) => {
       counts[student.academic_year] = (counts[student.academic_year] || 0) + 1;
       return counts;
@@ -597,7 +602,7 @@ confirmImportButton.addEventListener("click", async () => {
   }
 });
 searchInput.addEventListener("input", loadStudents);
-departmentFilter.addEventListener("input", loadStudents);
+departmentFilter.addEventListener("change", loadStudents);
 academicYearFilter.addEventListener("input", loadStudents);
 
 loadStudents();
