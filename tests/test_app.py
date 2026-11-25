@@ -237,6 +237,17 @@ def test_list_filters_by_name_roll_number_department_and_email(client):
     assert results[0]["department"] == "Computer Science"
 
 
+def test_list_searches_by_student_id(client):
+    created = client.post("/api/students", json=student()).get_json()
+
+    response = client.get(f"/api/students?q={created['id']}")
+
+    assert response.status_code == 200
+    results = response.get_json()
+    assert len(results) == 1
+    assert results[0]["id"] == created["id"]
+
+
 def test_list_search_with_special_characters_returns_empty_list(client):
     # Search string should not crash or trigger unsafe behavior.
     response = client.get("/api/students?q=\" OR 1=1 --")
@@ -485,6 +496,16 @@ def test_filter_by_department(client):
     results = response.get_json()
     assert len(results) == 1
     assert results[0]["department"] == "Computer Science"
+
+
+def test_department_dropdown_is_available_in_both_frontends(client):
+    flask_page = client.get("/").get_data(as_text=True)
+    demo_page = (Path(__file__).resolve().parents[1] / "index.html").read_text(encoding="utf-8")
+
+    for page in [flask_page, demo_page]:
+        assert '<select id="departmentFilter">' in page
+        assert '<option value="">All departments</option>' in page
+        assert 'id="clearFiltersButton"' in page
 
 
 def test_filter_by_academic_year(client):

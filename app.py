@@ -95,8 +95,8 @@ def create_app(test_config=None):
             conditions=[]
             params=[]
             if q:
-                conditions.append("(name LIKE ? OR roll_number LIKE ? OR department LIKE ? OR email LIKE ?)")
-                params.extend([f"%{q}%"]*4)
+                conditions.append("(CAST(id AS TEXT) LIKE ? OR name LIKE ? OR roll_number LIKE ? OR department LIKE ? OR email LIKE ?)")
+                params.extend([f"%{q}%"]*5)
             if department:
                 conditions.append("department COLLATE NOCASE = ?")
                 params.append(department)

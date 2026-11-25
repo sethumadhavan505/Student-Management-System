@@ -167,19 +167,14 @@
               <input
                 id="searchInput"
                 type="search"
-                placeholder="Search name, roll no., department, or email..."
+                placeholder="Search name, student ID, roll no., department, or email..."
                 autocomplete="off"
               >
             </div>
             <label class="sr-only" for="departmentFilter">Filter by department</label>
-            <input
-              id="departmentFilter"
-              type="search"
-              list="departmentOptions"
-              placeholder="All departments"
-              autocomplete="off"
-            >
-            <datalist id="departmentOptions"></datalist>
+            <select id="departmentFilter">
+              <option value="">All departments</option>
+            </select>
             <label class="sr-only" for="academicYearFilter">Filter by academic year</label>
             <input
               id="academicYearFilter"
