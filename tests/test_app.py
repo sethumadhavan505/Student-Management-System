@@ -248,6 +248,39 @@ def test_list_searches_by_student_id(client):
     assert results[0]["id"] == created["id"]
 
 
+
+def test_student_id_search_combines_with_department_filter(client):
+    created = client.post(
+        "/api/students",
+        json=student(
+            name="Asha Kumar",
+            roll_number="IT001",
+            department="Information Technology",
+        ),
+    ).get_json()
+    client.post(
+        "/api/students",
+        json=student(
+            name="Ravi Nair",
+            roll_number="CS101",
+            department="Computer Science",
+            email="ravi@example.com",
+        ),
+    )
+
+    matching = client.get(
+        f"/api/students?q={created['id']}&department=information%20technology"
+    )
+    non_matching = client.get(
+        f"/api/students?q={created['id']}&department=Computer%20Science"
+    )
+
+    assert matching.status_code == 200
+    assert matching.get_json() == [created]
+    assert non_matching.status_code == 200
+    assert non_matching.get_json() == []
+
+
 def test_list_search_with_special_characters_returns_empty_list(client):
     # Search string should not crash or trigger unsafe behavior.
     response = client.get("/api/students?q=\" OR 1=1 --")
