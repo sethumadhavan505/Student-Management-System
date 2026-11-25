@@ -262,7 +262,7 @@ def test_student_id_search_combines_with_department_filter(client):
         "/api/students",
         json=student(
             name="Ravi Nair",
-            roll_number="CS101",
+            roll_number="CS999",
             department="Computer Science",
             email="ravi@example.com",
         ),
